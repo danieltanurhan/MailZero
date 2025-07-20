@@ -49,7 +49,7 @@ export default defineConfig({
     }),
   ],
   server: {
-    port: 3000,
+    port: 6002,
     warmup: {
       clientFiles: ['./app/**/*', './components/**/*'],
     },

@@ -14,8 +14,8 @@
     "local": {
       "name": "zero-local",
       "vars": {
-        "VITE_PUBLIC_BACKEND_URL": "http://localhost:8787",
-        "VITE_PUBLIC_APP_URL": "http://localhost:3000",
+        "VITE_PUBLIC_BACKEND_URL": "http://localhost:6788",
+        "VITE_PUBLIC_APP_URL": "http://localhost:6002",
       },
     },
     "staging": {

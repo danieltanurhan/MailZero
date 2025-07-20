@@ -93,8 +93,8 @@
       "vars": {
         "NODE_ENV": "development",
         "COOKIE_DOMAIN": "localhost",
-        "VITE_PUBLIC_BACKEND_URL": "http://localhost:8787",
-        "VITE_PUBLIC_APP_URL": "http://localhost:3000",
+        "VITE_PUBLIC_BACKEND_URL": "http://localhost:6788",
+        "VITE_PUBLIC_APP_URL": "http://localhost:6002",
         "JWT_SECRET": "secret",
         "ELEVENLABS_API_KEY": "1234567890",
         "DISABLE_CALLS": "true",
