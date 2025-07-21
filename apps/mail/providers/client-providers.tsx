@@ -1,4 +1,6 @@
 import { useKeyboardLayout } from '@/components/keyboard-layout-indicator';
+import { useEffect } from 'react';
+import { initializeAppCheckForClient } from '@/lib/app-check';
 import { LoadingProvider } from '@/components/context/loading-context';
 import { NuqsAdapter } from 'nuqs/adapters/react-router/v7';
 import { SidebarProvider } from '@/components/ui/sidebar';
@@ -14,6 +16,10 @@ export function ClientProviders({ children }: PropsWithChildren) {
   useKeyboardLayout();
 
   const theme = data?.settings.colorTheme || 'system';
+
+  useEffect(() => {
+    initializeAppCheckForClient();
+  }, []);
 
   return (
     <NuqsAdapter>

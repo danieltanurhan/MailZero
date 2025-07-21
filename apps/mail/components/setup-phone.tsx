@@ -14,7 +14,8 @@ import {
 } from './ui/dropdown-menu';
 import { Form, FormField, FormItem, FormControl, FormMessage, FormDescription } from './ui/form';
 import { InputOTP, InputOTPGroup, InputOTPSlot, InputOTPSeparator } from './ui/input-otp';
-import { useSession, authClient } from '@/lib/auth-client';
+import { authClient } from '@/lib/auth-client';
+import { useFirebaseSession as useSession } from '@/lib/useFirebaseSession';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { OldPhone } from './icons/icons';

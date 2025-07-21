@@ -8,7 +8,8 @@ import {
 } from '@/components/ui/dialog';
 import { Form, FormControl, FormDescription, FormField, FormItem } from '@/components/ui/form';
 import { SettingsCard } from '@/components/settings/settings-card';
-import { useSession, signOut } from '@/lib/auth-client';
+import { signOut } from '@/lib/auth-client';
+import { useFirebaseSession as useSession } from '@/lib/useFirebaseSession';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTRPC } from '@/providers/query-provider';
 import { useMutation } from '@tanstack/react-query';

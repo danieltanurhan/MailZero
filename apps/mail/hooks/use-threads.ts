@@ -4,7 +4,7 @@ import type { IGetThreadResponse } from '../../server/src/lib/driver/types';
 import { useSearchValue } from '@/hooks/use-search-value';
 import { useTRPC } from '@/providers/query-provider';
 import useSearchLabels from './use-labels-search';
-import { useSession } from '@/lib/auth-client';
+import { useFirebaseSession as useSession } from '@/lib/useFirebaseSession';
 import { useAtom, useAtomValue } from 'jotai';
 import { useSettings } from './use-settings';
 import { useParams } from 'react-router';

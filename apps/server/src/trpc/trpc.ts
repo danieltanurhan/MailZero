@@ -32,10 +32,17 @@ export const activeConnectionProcedure = privateProcedure.use(async ({ ctx, next
     const activeConnection = await getActiveConnection();
     return next({ ctx: { ...ctx, activeConnection } });
   } catch (err) {
-    await ctx.c.var.auth.api.signOut({ headers: ctx.c.req.raw.headers });
+    // If session is invalid/expired, sign the user out; otherwise just propagate the error
+    const errMsg = err instanceof Error ? err.message : String(err);
+
+    if (errMsg === 'Session Not Found' && ctx.c.var.auth) {
+      // Don't auto sign-out - let Firebase Auth handle session management
+      console.warn('Session not found, but not triggering signOut');
+    }
+
     throw new TRPCError({
       code: 'BAD_REQUEST',
-      message: err instanceof Error ? err.message : 'Failed to get active connection',
+      message: errMsg || 'Failed to get active connection',
     });
   }
 });

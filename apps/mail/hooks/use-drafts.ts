@@ -1,6 +1,6 @@
 import { useTRPC } from '@/providers/query-provider';
 import { useQuery } from '@tanstack/react-query';
-import { useSession } from '@/lib/auth-client';
+import { useFirebaseSession as useSession } from '@/lib/useFirebaseSession';
 
 export const useDraft = (id: string | null) => {
   const { data: session } = useSession();

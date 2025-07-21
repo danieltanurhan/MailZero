@@ -1,5 +1,4 @@
 import { useAutumn, useCustomer } from 'autumn-js/react';
-import { signOut } from '@/lib/auth-client';
 import { useEffect, useMemo } from 'react';
 
 type FeatureState = {
@@ -65,7 +64,8 @@ export const useBilling = () => {
   const { attach, track, openBillingPortal } = useAutumn();
 
   useEffect(() => {
-    if (error) signOut();
+    // Don't auto sign-out on billing errors - let user handle it manually
+    if (error) console.warn('Billing error:', error);
   }, [error]);
 
   const { isPro, ...customerFeatures } = useMemo(() => {

@@ -18,6 +18,7 @@ import { AlertCircle, Loader2 } from 'lucide-react';
 import type { AppRouter } from '@zero/server/trpc';
 import { Button } from '@/components/ui/button';
 import { getLocale } from '@/paraglide/runtime';
+import { authFetch } from '@/lib/auth-fetch';
 import { siteConfig } from '@/lib/site-config';
 import { signOut } from '@/lib/auth-client';
 import type { Route } from './+types/root';
@@ -37,7 +38,11 @@ export const getServerTrpc = (req: Request) =>
         maxItems: 1,
         url: getUrl(),
         transformer: superjson,
-        headers: req.headers,
+        // In the browser attach Firebase token via authFetch
+        fetch: (url, opts) =>
+          typeof window === 'undefined'
+            ? fetch(url, { ...opts, headers: req.headers })
+            : authFetch(url, opts),
       }),
     ],
   });

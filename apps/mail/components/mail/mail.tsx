@@ -49,7 +49,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { useLabels } from '@/hooks/use-labels';
-import { useSession } from '@/lib/auth-client';
+import { useFirebaseSession as useSession } from '@/lib/useFirebaseSession';
 import { ScrollArea } from '../ui/scroll-area';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';

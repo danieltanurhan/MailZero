@@ -1,7 +1,7 @@
 import { createContext, useContext, useState } from 'react';
 import { toolExecutors } from '@/lib/elevenlabs-tools';
 import { useConversation } from '@elevenlabs/react';
-import { useSession } from '@/lib/auth-client';
+import { useFirebaseSession as useSession } from '@/lib/useFirebaseSession';
 import type { ReactNode } from 'react';
 import { toast } from 'sonner';
 

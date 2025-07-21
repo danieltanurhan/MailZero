@@ -1,7 +1,7 @@
 // app/providers.tsx
 
 import { PostHogProvider as PHProvider } from 'posthog-js/react';
-import { useSession } from '@/lib/auth-client';
+import { useFirebaseSession as useSession } from '@/lib/useFirebaseSession';
 import { useEffect } from 'react';
 import posthog from 'posthog-js';
 

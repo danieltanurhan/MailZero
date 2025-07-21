@@ -22,7 +22,6 @@ import { eq, and, desc, asc, inArray } from 'drizzle-orm';
 import { EWorkflowType, runWorkflow } from './pipelines';
 import { contextStorage } from 'hono/context-storage';
 import { defaultUserSettings } from './lib/schemas';
-import { createLocalJWKSet, jwtVerify } from 'jose';
 import { routePartykitRequest } from 'partyserver';
 
 import { enableBrainFunction } from './lib/brain';
@@ -36,6 +35,7 @@ import type { HonoContext } from './ctx';
 import { createDb, type DB } from './db';
 import { ZeroMCP } from './routes/chat';
 import { createAuth } from './lib/auth';
+import { verifyFirebaseTokenFromHeaders } from './lib/firebase-auth';
 import { aiRouter } from './routes/ai';
 import { Autumn } from 'autumn-js';
 import { appRouter } from './trpc';
@@ -502,25 +502,15 @@ export default class extends WorkerEntrypoint<typeof env> {
     .use('*', async (c, next) => {
       const auth = createAuth();
       c.set('auth', auth);
-      const session = await auth.api.getSession({ headers: c.req.raw.headers });
-      c.set('sessionUser', session?.user);
+      // Try Firebase token first
+      const firebaseUser = await verifyFirebaseTokenFromHeaders(c.req.raw.headers);
 
-      if (c.req.header('Authorization') && !session?.user) {
-        const token = c.req.header('Authorization')?.split(' ')[1];
-
-        if (token) {
-          const localJwks = await auth.api.getJwks();
-          const jwks = createLocalJWKSet(localJwks);
-
-          const { payload } = await jwtVerify(token, jwks);
-          const userId = payload.sub;
-
-          if (userId) {
-            const db = getZeroDB(userId);
-            c.set('sessionUser', await db.findUser());
-            (await db)[Symbol.dispose]?.();
-          }
-        }
+      if (firebaseUser) {
+        c.set('sessionUser', firebaseUser);
+      } else {
+        // Fallback to BetterAuth session cookie
+        const session = await auth.api.getSession({ headers: c.req.raw.headers });
+        c.set('sessionUser', session?.user);
       }
 
       const autumn = new Autumn({ secretKey: env.AUTUMN_SECRET_KEY });
@@ -541,7 +531,8 @@ export default class extends WorkerEntrypoint<typeof env> {
     .route('/autumn', autumnApi)
     .route('/public', publicRouter)
     .on(['GET', 'POST', 'OPTIONS'], '/auth/*', (c) => {
-      return c.var.auth.handler(c.req.raw);
+      // auth is populated earlier; non-null assertion silences undefined check
+      return c.var.auth!.handler(c.req.raw);
     })
     .use(
       trpcServer({

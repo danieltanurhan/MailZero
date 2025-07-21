@@ -4,12 +4,12 @@ import {
   type Persister,
 } from '@tanstack/react-query-persist-client';
 import { createTRPCClient, httpBatchLink, loggerLink } from '@trpc/client';
+import { authFetch } from '@/lib/auth-fetch';
 import { QueryCache, QueryClient, hashKey } from '@tanstack/react-query';
 import { createTRPCContext } from '@trpc/tanstack-react-query';
 import { useMemo, type PropsWithChildren } from 'react';
 import type { AppRouter } from '@zero/server/trpc';
 import { CACHE_BURST_KEY } from '@/lib/constants';
-import { signOut } from '@/lib/auth-client';
 import { get, set, del } from 'idb-keyval';
 import superjson from 'superjson';
 
@@ -37,14 +37,10 @@ export const makeQueryClient = (connectionId: string | null) =>
           err.message === 'Required scopes missing' ||
           err.message.includes('Invalid connection')
         ) {
-          signOut({
-            fetchOptions: {
-              onSuccess: () => {
-                if (window.location.href.includes('/login')) return;
-                window.location.href = '/login?error=required_scopes_missing';
-              },
-            },
-          });
+          // Redirect to login without triggering Better-Auth signOut
+          if (!window.location.href.includes('/login')) {
+            window.location.href = '/login?error=required_scopes_missing';
+          }
         } else console.error(err.message || 'Something went wrong');
       },
     }),
@@ -93,8 +89,9 @@ export const trpcClient = createTRPCClient<AppRouter>({
       url: getUrl(),
       methodOverride: 'POST',
       maxItems: 1,
+      // Attach Firebase ID token automatically
       fetch: (url, options) =>
-        fetch(url, { ...options, credentials: 'include' }).then((res) => {
+        authFetch(url, options).then((res) => {
           const currentPath = new URL(window.location.href).pathname;
           const redirectPath = res.headers.get('X-Zero-Redirect');
           if (!!redirectPath && redirectPath !== currentPath) window.location.href = redirectPath;

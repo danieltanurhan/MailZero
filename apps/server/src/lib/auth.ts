@@ -265,6 +265,24 @@ const createAuthConfig = () => {
         enabled: true,
         domain: env.COOKIE_DOMAIN,
       },
+      cookies: {
+        // Ensure session cookies are available to all API routes, not only /api/auth
+        session_token: {
+          attributes: {
+            path: '/',
+          },
+        },
+        session_data: {
+          attributes: {
+            path: '/',
+          },
+        },
+        dont_remember: {
+          attributes: {
+            path: '/',
+          },
+        },
+      },
     },
     baseURL: env.VITE_PUBLIC_BACKEND_URL,
     trustedOrigins: [
@@ -273,6 +291,8 @@ const createAuthConfig = () => {
       'https://staging.0.email',
       'https://0.email',
       'http://localhost:3000',
+      'http://localhost:6002',
+      'http://localhost:6788',
     ],
     session: {
       cookieCache: {

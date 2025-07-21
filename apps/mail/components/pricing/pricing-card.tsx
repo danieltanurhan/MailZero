@@ -1,5 +1,6 @@
 import { PurpleThickCheck, ThickCheck } from '../icons/icons';
-import { useSession, signIn } from '@/lib/auth-client';
+import { signIn } from '@/lib/auth-client';
+import { useFirebaseSession as useSession } from '@/lib/useFirebaseSession';
 import { PricingSwitch } from '../ui/pricing-switch';
 import { useBilling } from '@/hooks/use-billing';
 import { useNavigate } from 'react-router';

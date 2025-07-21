@@ -2,7 +2,7 @@ import { Mic, MicOff, Loader2, WavesIcon } from 'lucide-react';
 import { useVoice } from '@/providers/voice-provider';
 import { motion } from 'motion/react';
 
-import { useSession } from '@/lib/auth-client';
+import { useFirebaseSession as useSession } from '@/lib/useFirebaseSession';
 import { useQueryState } from 'nuqs';
 
 export function VoiceButton() {
