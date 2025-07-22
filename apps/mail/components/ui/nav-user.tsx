@@ -21,7 +21,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLoading } from '../context/loading-context';
-import { signOut } from '@/lib/auth-client';
+import { firebaseSignOut as signOut } from '@/lib/firebase-auth-actions';
 import { useFirebaseSession as useSession } from '@/lib/useFirebaseSession';
 import { AddConnectionDialog } from '../connection/add';
 import { CircleCheck, ThreeDots } from '../icons/icons';

@@ -8,7 +8,7 @@ import {
 } from '@/components/ui/dialog';
 import { Form, FormControl, FormDescription, FormField, FormItem } from '@/components/ui/form';
 import { SettingsCard } from '@/components/settings/settings-card';
-import { signOut } from '@/lib/auth-client';
+import { firebaseSignOut as signOut } from '@/lib/firebase-auth-actions';
 import { useFirebaseSession as useSession } from '@/lib/useFirebaseSession';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTRPC } from '@/providers/query-provider';

@@ -1,5 +1,5 @@
 import { Plus, PurpleThickCheck, ThickCheck } from '../icons/icons';
-import { signIn } from '@/lib/auth-client';
+import { redirectToLogin } from '@/lib/firebase-auth-actions';
 import { useFirebaseSession as useSession } from '@/lib/useFirebaseSession';
 import { useBilling } from '@/hooks/use-billing';
 import { useNavigate } from 'react-router';
@@ -12,16 +12,7 @@ export default function Comparision() {
 
   const handleUpgrade = async () => {
     if (!session) {
-      toast.promise(
-        signIn.social({
-          provider: 'google',
-          callbackURL: `${window.location.origin}/pricing`,
-        }),
-        {
-          success: 'Redirecting to login...',
-          error: 'Login redirect failed',
-        },
-      );
+      redirectToLogin(`${window.location.origin}/login?from=/pricing`);
       return;
     }
 
@@ -153,16 +144,8 @@ export default function Comparision() {
                     // User is logged in, redirect to inbox
                     navigate('/mail/inbox');
                   } else {
-                    // User is not logged in, show sign-in dialog
-                    toast.promise(
-                      signIn.social({
-                        provider: 'google',
-                        callbackURL: `${window.location.origin}/mail`,
-                      }),
-                      {
-                        error: 'Login redirect failed',
-                      },
-                    );
+                    // Redirect to login page
+                    redirectToLogin(`${window.location.origin}/login?from=/mail`);
                   }
                 }}
                 className="inline-flex h-[40px] items-center justify-center gap-2.5 self-stretch overflow-hidden rounded-lg bg-gradient-to-l from-white/0 to-white/10 p-[3.5px] outline outline-1 outline-offset-[-1px] outline-white/10"

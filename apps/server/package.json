@@ -74,6 +74,8 @@
     "string-strip-html": "^13.4.12",
     "superjson": "catalog:",
     "twilio": "5.7.0",
+    "imapflow": "^1.0.115",
+    "mailparser": "^3.7.4",
     "uuid": "11.1.0",
     "wrangler": "catalog:",
     "zod": "catalog:"

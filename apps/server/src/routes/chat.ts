@@ -27,6 +27,8 @@ import { DurableObjectOAuthClientProvider } from 'agents/mcp/do-oauth-client-pro
 import { EPrompts, type IOutgoingMessage, type ParsedMessage } from '../types';
 import type { IGetThreadResponse, MailManager } from '../lib/driver/types';
 import { connectionToDriver, getZeroAgent } from '../lib/server-utils';
+import { loadImapCredentials } from '../lib/imap-credential-loader';
+import { createDriver } from '../lib/driver';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { type Connection, type WSMessage } from 'agents';
 import { ToolOrchestrator } from './agent/orchestrator';
@@ -434,7 +436,23 @@ export class ZeroAgent extends AIChatAgent<typeof env> {
       const _connection = await db.query.connection.findFirst({
         where: eq(connection.id, connectionId),
       });
-      if (_connection) this.driver = connectionToDriver(_connection);
+      if (_connection) {
+        this.driver = connectionToDriver(_connection);
+      } else {
+        // Attempt to load IMAP creds from Firestore
+        try {
+          // @ts-ignore – sessionUser may not be typed here; fallback to ctx var
+          const personnelId = (this.ctx as any)?.var?.sessionUser?.id ?? '';
+          if (personnelId) {
+            const imapConfig = await loadImapCredentials(connectionId, personnelId);
+            if (imapConfig) {
+              this.driver = createDriver('imap', imapConfig);
+            }
+          }
+        } catch (err) {
+          console.error('Failed to load IMAP credentials', err);
+        }
+      }
       this.ctx.waitUntil(conn.end());
       this.ctx.waitUntil(this.syncThreads('inbox'));
       this.ctx.waitUntil(this.syncThreads('sent'));

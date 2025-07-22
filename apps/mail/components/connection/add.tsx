@@ -8,7 +8,7 @@ import {
 } from '../ui/dialog';
 import { useBilling } from '@/hooks/use-billing';
 import { emailProviders } from '@/lib/constants';
-import { authClient } from '@/lib/auth-client';
+import { authClient } from '@/lib/firebase-auth-actions';
 import { Plus, UserPlus } from 'lucide-react';
 import { useLocation } from 'react-router';
 import { m } from '@/paraglide/messages';

@@ -9,7 +9,7 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { GitHub, Twitter, Discord, LinkedIn, Star } from './icons/icons';
 import { AnimatedNumber } from '@/components/ui/animated-number';
-import { signIn } from '@/lib/auth-client';
+import { redirectToLogin } from '@/lib/firebase-auth-actions';
 import { useFirebaseSession as useSession } from '@/lib/useFirebaseSession';
 import { Separator } from '@/components/ui/separator';
 import { useQuery } from '@tanstack/react-query';
@@ -197,15 +197,7 @@ export function Navigation() {
                 if (session) {
                   navigate('/mail/inbox');
                 } else {
-                  toast.promise(
-                    signIn.social({
-                      provider: 'google',
-                      callbackURL: `${window.location.origin}/mail`,
-                    }),
-                    {
-                      error: 'Login redirect failed',
-                    },
-                  );
+                  redirectToLogin(`${window.location.origin}/login?from=/mail`);
                 }
               }}
             >

@@ -1,7 +1,7 @@
 import { cleanEmailAddresses } from '../lib/email-utils';
 import { trpcClient } from '@/providers/query-provider';
 import type { Route } from './+types/mailto-handler';
-import { authProxy } from '@/lib/auth-proxy';
+import { authProxy } from '@/lib/firebase-auth-actions';
 
 // Function to parse mailto URLs
 async function parseMailtoUrl(mailtoUrl: string) {

@@ -20,7 +20,7 @@ import { Button } from '@/components/ui/button';
 import { getLocale } from '@/paraglide/runtime';
 import { authFetch } from '@/lib/auth-fetch';
 import { siteConfig } from '@/lib/site-config';
-import { signOut } from '@/lib/auth-client';
+import { firebaseSignOut as signOut } from '@/lib/firebase-auth-actions';
 import type { Route } from './+types/root';
 import { m } from '@/paraglide/messages';
 import { ArrowLeft } from 'lucide-react';

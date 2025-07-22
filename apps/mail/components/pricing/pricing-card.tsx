@@ -1,5 +1,5 @@
 import { PurpleThickCheck, ThickCheck } from '../icons/icons';
-import { signIn } from '@/lib/auth-client';
+import { redirectToLogin } from '@/lib/firebase-auth-actions';
 import { useFirebaseSession as useSession } from '@/lib/useFirebaseSession';
 import { PricingSwitch } from '../ui/pricing-switch';
 import { useBilling } from '@/hooks/use-billing';
@@ -44,20 +44,8 @@ const PRICING_CONSTANTS = {
   ANNUAL_DISCOUNT: 0.5,
 } as const;
 
-const handleGoogleSignIn = (
-  callbackURL: string,
-  options?: { loading?: string; success?: string },
-) => {
-  return toast.promise(
-    signIn.social({
-      provider: 'google',
-      callbackURL,
-    }),
-    {
-      success: options?.success || 'Redirecting to login...',
-      error: 'Login redirect failed',
-    },
-  );
+const handleLoginRedirect = (callbackURL: string) => {
+  redirectToLogin(callbackURL);
 };
 
 interface FeatureItemProps {
@@ -90,7 +78,7 @@ export default function PricingCard() {
 
   const handleUpgrade = async () => {
     if (!session) {
-      handleGoogleSignIn(`${window.location.origin}/pricing`);
+      handleLoginRedirect(`${window.location.origin}/login?from=/mail`);
       return;
     }
 
@@ -163,10 +151,7 @@ export default function PricingCard() {
               if (session) {
                 navigate('/mail/inbox');
               } else {
-                handleGoogleSignIn(`${window.location.origin}/mail`, {
-                  loading: undefined,
-                  success: undefined,
-                });
+                handleLoginRedirect(`${window.location.origin}/login?from=/mail`);
               }
             }}
             className="z-30 mt-auto inline-flex h-10 items-center justify-center gap-2.5 self-stretch overflow-hidden rounded-lg bg-[#2D2D2D] p-3 shadow shadow-black/30 outline outline-1 outline-offset-[-1px] outline-[#434343]"

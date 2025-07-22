@@ -5,7 +5,6 @@ import { Google, Microsoft } from '@/components/icons/icons';
 import ErrorMessage from '@/app/(auth)/login/error-message';
 import { Button } from '@/components/ui/button';
 import { TriangleAlert } from 'lucide-react';
-import { signIn } from '@/lib/auth-client';
 import { useNavigate } from 'react-router';
 import { useQueryState } from 'nuqs';
 import { toast } from 'sonner';

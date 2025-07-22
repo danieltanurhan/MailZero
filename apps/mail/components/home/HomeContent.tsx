@@ -27,7 +27,7 @@ import {
 } from '../icons/icons';
 import { PixelatedBackground, PixelatedLeft, PixelatedRight } from '@/components/home/pixelated-bg';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
-import { signIn } from '@/lib/auth-client';
+import { redirectToLogin } from '@/lib/firebase-auth-actions';
 import { useFirebaseSession as useSession } from '@/lib/useFirebaseSession';
 import { Link, useNavigate } from 'react-router';
 import { Button } from '@/components/ui/button';
@@ -131,15 +131,7 @@ export default function HomeContent() {
               if (session) {
                 navigate('/mail/inbox');
               } else {
-                toast.promise(
-                  signIn.social({
-                    provider: 'google',
-                    callbackURL: `${window.location.origin}/mail`,
-                  }),
-                  {
-                    error: 'Login redirect failed',
-                  },
-                );
+                redirectToLogin(`${window.location.origin}/login?from=/mail`);
               }
             }}
           >
