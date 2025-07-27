@@ -125,22 +125,11 @@ export const connection = createTable(
     email: text('email').notNull(),
     name: text('name'),
     picture: text('picture'),
-    // OAuth fields (for google/microsoft)
     accessToken: text('access_token'),
     refreshToken: text('refresh_token'),
-    scope: text('scope'),
-    // Extended to support IMAP
-    providerId: text('provider_id').$type<'google' | 'microsoft' | 'imap'>().notNull(),
-    expiresAt: timestamp('expires_at'),
-    // IMAP-specific fields
-    imapHost: text('imap_host'),
-    imapPort: integer('imap_port'),
-    imapTls: boolean('imap_tls'),
-    smtpHost: text('smtp_host'),
-    smtpPort: integer('smtp_port'),
-    smtpTls: boolean('smtp_tls'),
-    encryptedPassword: text('encrypted_password'), // AES-encrypted IMAP password
-    // Common fields
+    scope: text('scope').notNull(),
+    providerId: text('provider_id').$type<'google' | 'microsoft'>().notNull(),
+    expiresAt: timestamp('expires_at').notNull(),
     createdAt: timestamp('created_at').notNull(),
     updatedAt: timestamp('updated_at').notNull(),
   },

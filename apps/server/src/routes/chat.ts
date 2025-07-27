@@ -50,7 +50,6 @@ import { createDb } from '../db';
 import { Effect } from 'effect';
 import { z } from 'zod';
 
-
 const decoder = new TextDecoder();
 
 export enum IncomingMessageType {
@@ -278,96 +277,237 @@ export class AgentRpcDO extends RpcTarget {
   }
 
   async setupAuth(connectionId: string, sessionUserId?: string) {
-    console.log('[SETUP_AUTH] Called with connectionId:', connectionId, 'sessionUserId:', sessionUserId);
+    return await this.mainDo.setupAuth(connectionId, sessionUserId);
+  }
 
-    if (this.driver) {
-      console.log('[SETUP_AUTH] Driver already exists, skipping setup');
-      return;
-    }
+  async broadcast(message: string) {
+    return this.mainDo.broadcast(message);
+  }
 
-    try {
-      console.log('[SETUP_AUTH] Attempting to load connection...');
+  //   async getThreadsFromDB(params: {
+  //     labelIds?: string[];
+  //     folder?: string;
+  //     q?: string;
+  //     max?: number;
+  //     cursor?: string;
+  //   }) {
+  //     return await this.mainDo.getThreadsFromDB(params);
+  //   }
 
-      // First try SQL database (for migrated IMAP connections)
-      if (sessionUserId) {
-        console.log('[SETUP_AUTH] Checking SQL database for connection...');
-        const db = getZeroDB(sessionUserId);
-        const sqlConnection = await db.findUserConnection(sessionUserId, connectionId);
+  //   async getThreadFromDB(id: string) {
+  //     return await this.mainDo.getThreadFromDB(id);
+  //   }
 
-        if (sqlConnection && sqlConnection.providerId === 'imap') {
-          console.log('[SETUP_AUTH] Found IMAP connection in SQL database');
-          
-          // Decrypt the password
-          const decryptedPassword = await decryptStoredPassword(sqlConnection.encryptedPassword!);
-          console.log('[SETUP_AUTH] Successfully decrypted password for SQL IMAP connection');
+  async listHistory<T>(historyId: string) {
+    return await this.mainDo.listHistory<T>(historyId);
+  }
 
-          // Create IMAP driver config
-          const imapConfig = {
-            auth: {
-              email: sqlConnection.email,
-              accessToken: decryptedPassword, // Use decrypted password as accessToken
-              refreshToken: '', // Not used for IMAP
-            },
-            serverConfig: {
-              host: sqlConnection.imapHost!,
-              port: sqlConnection.imapPort!,
-              tls: sqlConnection.imapTls!,
-            }
-          };
+  async syncThreads(folder: string) {
+    return await this.mainDo.syncThreads(folder);
+  }
 
-          console.log('[SETUP_AUTH] Creating IMAP driver from SQL data');
-          this.driver = createDriver('imap', imapConfig);
-          console.log('[SETUP_AUTH] Successfully created IMAP driver from SQL');
-          return;
-        } else if (sqlConnection) {
-          console.log('[SETUP_AUTH] Found non-IMAP connection in SQL:', sqlConnection.providerId);
-          // Handle OAuth connections if needed
-          return;
-        } else {
-          console.log('[SETUP_AUTH] No connection found in SQL database, trying Firestore fallback...');
-        }
-      }
+  async inboxRag(query: string) {
+    return await this.mainDo.inboxRag(query);
+  }
 
-      // Fallback to Firestore (legacy system)
-      const firestore = getWorkersFirestore();
-      const userIdToUse = sessionUserId || connectionId;
+  async searchThreads(params: {
+    query: string;
+    folder?: string;
+    maxResults?: number;
+    labelIds?: string[];
+    pageToken?: string;
+  }) {
+    return await this.mainDo.searchThreads(params);
+  }
+}
 
-      if (userIdToUse) {
-        console.log('[SETUP_AUTH] Querying personnel for session user:', userIdToUse);
-        const personnelDocs = await firestore.queryCollection('personnel', [
-          { field: 'userId', op: '==', value: userIdToUse }
-        ]);
+const shouldDropTables = (env.DROP_AGENT_TABLES as string) === 'true';
+const maxCount = parseInt(env.THREAD_SYNC_MAX_COUNT || '40', 10);
+const shouldLoop = env.THREAD_SYNC_LOOP !== 'false';
 
-        if (personnelDocs.length > 0) {
-          const personnelDocId = personnelDocs[0].id;
-          console.log('[SETUP_AUTH] Found personnel doc ID:', personnelDocId, 'for session user:', userIdToUse);
-          
-          // Step 2: Load IMAP credentials with correct IDs
-          console.log('[SETUP_AUTH] About to call loadImapCredentials with:', { connectionId, personnelDocId });
-          const imapConfig = await loadImapCredentials(connectionId, personnelDocId);
-          console.log('[SETUP_AUTH] loadImapCredentials returned:', imapConfig ? 'config object' : 'null');
-          
-          if (imapConfig) {
-            console.log('[SETUP_AUTH] Successfully loaded IMAP config for:', connectionId);
-            console.log('[SETUP_AUTH] Config details:', {
-              hasAuth: !!imapConfig.auth,
-              hasAccessToken: !!imapConfig.auth?.accessToken,
-              accessTokenLength: imapConfig.auth?.accessToken?.length,
-              serverConfig: imapConfig.serverConfig
-            });
-            this.driver = createDriver('imap', imapConfig);
-            console.log('[SETUP_AUTH] Created IMAP driver successfully from Firestore');
-          } else {
-            console.log('[SETUP_AUTH] No IMAP config found for account:', connectionId, 'personnel:', personnelDocId);
+export class ZeroAgent extends AIChatAgent<typeof env> {
+  private chatMessageAbortControllers: Map<string, AbortController> = new Map();
+  private foldersInSync: Map<string, boolean> = new Map();
+  private syncThreadsInProgress: Map<string, boolean> = new Map();
+  private currentFolder: string | null = 'inbox';
+  driver: MailManager | null = null;
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    if (shouldDropTables) this.dropTables();
+    this.sql`
+        CREATE TABLE IF NOT EXISTS threads (
+            id TEXT PRIMARY KEY,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            thread_id TEXT NOT NULL,
+            provider_id TEXT NOT NULL,
+            latest_sender TEXT,
+            latest_received_on TEXT,
+            latest_subject TEXT,
+            latest_label_ids TEXT,
+            categories TEXT
+        );
+    `;
+  }
+
+  async dropTables() {
+    return this.sql`       
+        DROP TABLE IF EXISTS threads;`;
+  }
+
+  async setMetaData(connectionId: string) {
+    await this.setName(connectionId);
+    return new AgentRpcDO(this, connectionId);
+  }
+
+  async registerZeroMCP() {
+    await this.mcp.connect(env.VITE_PUBLIC_BACKEND_URL + '/sse', {
+      transport: {
+        authProvider: new DurableObjectOAuthClientProvider(
+          this.ctx.storage,
+          'zero-mcp',
+          env.VITE_PUBLIC_BACKEND_URL,
+        ),
+      },
+    });
+  }
+
+  onStart(): void | Promise<void> {
+    // this.registerZeroMCP();
+  }
+
+  private getDataStreamResponse(
+    onFinish: StreamTextOnFinishCallback<{}>,
+    _?: {
+      abortSignal: AbortSignal | undefined;
+    },
+  ) {
+    const dataStreamResponse = createDataStreamResponse({
+      execute: async (dataStream) => {
+        const connectionId = this.name;
+        if (connectionId === 'general') return;
+        if (!connectionId || !this.driver) {
+          console.log('Unauthorized no driver or connectionId [1]', connectionId, this.driver);
+          await this.setupAuth(connectionId);
+          if (!connectionId || !this.driver) {
+            console.log('Unauthorized no driver or connectionId', connectionId, this.driver);
+            throw new Error('Unauthorized no driver or connectionId [2]');
           }
-        } else {
-          console.log('[SETUP_AUTH] No personnel document found for session user:', userIdToUse);
         }
+        const orchestrator = new ToolOrchestrator(dataStream, connectionId);
+        // const mcpTools = await this.mcp.unstable_getAITools();
+
+        const rawTools = {
+          ...(await authTools(this, connectionId)),
+        };
+        const tools = orchestrator.processTools({});
+        const processedMessages = await processToolCalls(
+          {
+            messages: this.messages,
+            dataStream,
+            tools,
+          },
+          {},
+        );
+
+        const result = streamText({
+          model: anthropic(env.OPENAI_MODEL || 'claude-3-5-haiku-latest'),
+          maxSteps: 10,
+          messages: processedMessages,
+          tools: rawTools,
+          onFinish,
+          onError: (error) => {
+            console.error('Error in streamText', error);
+          },
+          system: await getPrompt(getPromptName(connectionId, EPrompts.Chat), AiChatPrompt('')),
+        });
+
+        result.mergeIntoDataStream(dataStream);
+      },
+    });
+
+    return dataStreamResponse;
+  }
+
+  public async setupAuth(connectionId: string, sessionUserId?: string) {
+    console.log('[SETUP_AUTH] Called with connectionId:', connectionId, 'sessionUserId:', sessionUserId);
+    
+    if (!this.driver) {
+      console.log('[SETUP_AUTH] No existing driver, attempting to create one');
+      const { db, conn } = createDb(env.HYPERDRIVE.connectionString);
+      const _connection = await db.query.connection.findFirst({
+        where: eq(connection.id, connectionId),
+      });
+      
+      console.log('[SETUP_AUTH] SQL connection found:', !!_connection);
+      
+      if (_connection) {
+        this.driver = connectionToDriver(_connection);
+        console.log('[SETUP_AUTH] Created driver from SQL connection');
       } else {
-        console.log('[SETUP_AUTH] No session user ID available');
+        console.log('[SETUP_AUTH] No SQL connection, trying Firestore...');
+        // Attempt to load IMAP creds from Firestore
+        try {
+          // Use the passed sessionUserId instead of trying to get it from context
+          const userIdToUse = sessionUserId || (this.ctx as any)?.var?.sessionUser?.id || '';
+          console.log('[SETUP_AUTH] Using session user ID:', userIdToUse);
+          
+          if (userIdToUse) {
+            // Step 1: Find personnel document by session user ID  
+            const { getWorkersFirestore } = await import('../lib/firestore-client');
+            const firestore = getWorkersFirestore();
+            const personnelDocs = await firestore.queryCollection('personnel', [
+              { field: 'userId', op: '==', value: userIdToUse }
+            ]);
+            
+            console.log('[SETUP_AUTH] Found', personnelDocs.length, 'personnel docs');
+            
+            if (personnelDocs.length > 0) {
+              const personnelDocId = personnelDocs[0].id;
+              console.log('[SETUP_AUTH] Found personnel doc ID:', personnelDocId, 'for session user:', userIdToUse);
+              
+              // Step 2: Load IMAP credentials with correct IDs
+              console.log('[SETUP_AUTH] About to call loadImapCredentials with:', { connectionId, personnelDocId });
+              const imapConfig = await loadImapCredentials(connectionId, personnelDocId);
+              console.log('[SETUP_AUTH] loadImapCredentials returned:', imapConfig ? 'config object' : 'null');
+              
+              if (imapConfig) {
+                console.log('[SETUP_AUTH] Successfully loaded IMAP config for:', connectionId);
+                console.log('[SETUP_AUTH] Config details:', {
+                  hasAuth: !!imapConfig.auth,
+                  hasAccessToken: !!imapConfig.auth?.accessToken,
+                  accessTokenLength: imapConfig.auth?.accessToken?.length,
+                  serverConfig: imapConfig.serverConfig
+                });
+                this.driver = createDriver('imap', imapConfig);
+                console.log('[SETUP_AUTH] Created IMAP driver successfully');
+              } else {
+                console.log('[SETUP_AUTH] No IMAP config found for account:', connectionId, 'personnel:', personnelDocId);
+              }
+            } else {
+              console.log('[SETUP_AUTH] No personnel document found for session user:', userIdToUse);
+            }
+          } else {
+            console.log('[SETUP_AUTH] No session user ID available');
+          }
+        } catch (err) {
+          console.error('[SETUP_AUTH] Failed to load IMAP credentials:', err);
+        }
       }
-    } catch (err) {
-      console.error('[SETUP_AUTH] Failed to load credentials:', err);
+      this.ctx.waitUntil(conn.end());
+      
+      // Only sync if we have a driver
+      if (this.driver) {
+        console.log('[SETUP_AUTH] Driver created, starting sync...');
+        this.ctx.waitUntil(this.syncThreads('inbox'));
+        this.ctx.waitUntil(this.syncThreads('sent'));
+        this.ctx.waitUntil(this.syncThreads('spam'));
+        this.ctx.waitUntil(this.syncThreads('archive'));
+      } else {
+        console.log('[SETUP_AUTH] No driver created, skipping sync');
+      }
+    } else {
+      console.log('[SETUP_AUTH] Driver already exists, skipping setup');
     }
   }
 
