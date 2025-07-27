@@ -5,9 +5,7 @@ import { Ratelimit } from '@upstash/ratelimit';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 import { loadImapCredentials } from '../../lib/imap-credential-loader';
-import { buildFirebaseCredential } from '../../lib/firebase-admin';
-import { initializeApp, getApps } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { getWorkersFirestore } from '../../lib/firestore-client';
 
 export const connectionsRouter = router({
   list: privateProcedure
@@ -43,43 +41,82 @@ export const connectionsRouter = router({
         };
       }
 
-      // ---- Firestore fallback ----
+      // ---- Firestore fallback using Workers-compatible client ----
       console.log('[CONNECTIONS] Attempting Firestore fallback for user', sessionUser.id);
       try {
-      if (!getApps().length) initializeApp({ credential: buildFirebaseCredential() });
-      const fs = getFirestore();
-      console.log('[CONNECTIONS] Firestore client obtained, querying assignments');
-      const snap = await fs
-          .collection('email_assignments')
-          .where('personnel_id', '==', sessionUser.id)
-          .where('status', '==', 'active')
-          .get();
+        const firestore = getWorkersFirestore();
+        console.log('[CONNECTIONS] Workers-compatible Firestore client created');
 
-      console.log('[CONNECTIONS] Assignment query returned', snap.size, 'documents');
-      const docs = await Promise.all(
-        snap.docs.map(async (a) => {
-          console.log('[CONNECTIONS] Processing assignment doc', a.id, 'for account', a.data().email_account_id);
-          const acct = await fs.collection('email_accounts').doc(a.data().email_account_id).get();
-          if (!acct.exists) return null;
-          const d = acct.data() as any;
-          if (!d) return null;
-          return {
-            id: acct.id,
-            email: d.email_address ?? '',
-            name: d.display_name ?? '',
-            picture: '',
-            createdAt: new Date(d.createdAt ?? Date.now()),
-            providerId: 'imap' as const,
-          };
-        }),
-      );
+        // Step 1: Find personnel document by userId (session user ID)
+        console.log('[CONNECTIONS] Step 1: Finding personnel document for userId', sessionUser.id);
+        const personnelDocs = await firestore.queryCollection('personnel', [
+          { field: 'userId', op: '==', value: sessionUser.id }
+        ]);
+        
+        console.log('[CONNECTIONS] Found', personnelDocs.length, 'personnel documents');
+        
+        if (personnelDocs.length === 0) {
+          console.log('[CONNECTIONS] No personnel document found for user_id', sessionUser.id);
+          return { connections: [], disconnectedIds: [] };
+        }
+        
+        const personnelDoc = personnelDocs[0];
+        const personnelId = personnelDoc.id;
+        console.log('[CONNECTIONS] Using personnel document ID:', personnelId, 'for user_id:', sessionUser.id);
 
-      const final = docs.filter(Boolean);
-      console.log('[CONNECTIONS] Returning', final.length, 'IMAP connections');
+        // Step 2: Find email assignments using personnel document ID
+        console.log('[CONNECTIONS] Step 2: Finding email assignments for personnel_id', personnelId);
+        const assignments = await firestore.queryCollection('email_assignments', [
+          { field: 'personnel_id', op: '==', value: personnelId },
+          { field: 'status', op: '==', value: 'active' }
+        ]);
 
-      return { connections: final, disconnectedIds: [] };
+        console.log('[CONNECTIONS] Assignment query returned', assignments.length, 'documents');
+        assignments.forEach(assignment => console.log('[CONNECTIONS] assignment doc', assignment.id, assignment.data));
+        
+        if (assignments.length === 0) {
+          console.log('[CONNECTIONS] No email assignments found for personnel_id', personnelId);
+          return { connections: [], disconnectedIds: [] };
+        }
+
+        const connections = await Promise.all(
+          assignments.map(async (assignment) => {
+            console.log('[CONNECTIONS] Processing assignment', assignment.id, 'for account', assignment.data.email_account_id);
+            try {
+              const accountDoc = await firestore.getDocument(`email_accounts/${assignment.data.email_account_id}`);
+              console.log('[CONNECTIONS] Account doc exists:', accountDoc?.exists, 'id:', assignment.data.email_account_id);
+              
+              if (!accountDoc?.exists || !accountDoc.data) return null;
+              
+              const accountData = accountDoc.data;
+              console.log('[CONNECTIONS] Account data:', accountData);
+              
+              return {
+                id: accountDoc.id,
+                email: accountData.email_address ?? '',
+                name: accountData.display_name ?? '',
+                picture: '',
+                createdAt: new Date(accountData.createdAt ?? Date.now()),
+                providerId: 'imap' as const,
+              };
+            } catch (docError) {
+              console.error('[CONNECTIONS] Error processing assignment', assignment.id, ':', docError);
+              return null;
+            }
+          }),
+        );
+
+        const validConnections = connections.filter(Boolean);
+        console.log('[CONNECTIONS] Returning', validConnections.length, 'IMAP connections');
+
+        return { connections: validConnections, disconnectedIds: [] };
       } catch (error) {
-        console.error('[CONNECTIONS] Firestore fallback failed:', error);
+        console.error('[CONNECTIONS] Firestore fallback failed with error:', error);
+        console.error('[CONNECTIONS] Error details:', {
+          message: error instanceof Error ? error.message : 'Unknown error',
+          code: (error as any)?.code,
+          stack: error instanceof Error ? error.stack : undefined
+        });
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
           message: 'Failed to load connections from Firestore',

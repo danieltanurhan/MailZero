@@ -2,10 +2,8 @@ import { getContext } from 'hono/context-storage';
 import { connection } from '../db/schema';
 import type { HonoContext } from '../ctx';
 import { env } from 'cloudflare:workers';
-import { initializeApp, getApps } from 'firebase-admin/app';
-import { buildFirebaseCredential } from './firebase-admin';
-import { getFirestore as getFs } from 'firebase-admin/firestore';
 import { createDriver } from './driver';
+import { decryptStoredPassword } from './encryption';
 
 export const getZeroDB = (userId: string) => {
   const stub = env.ZERO_DB.get(env.ZERO_DB.idFromName(userId));
@@ -14,9 +12,17 @@ export const getZeroDB = (userId: string) => {
 };
 
 export const getZeroAgent = async (connectionId: string) => {
+  const c = getContext<HonoContext>();
+  const { sessionUser } = c.var;
+  
   const stub = env.ZERO_AGENT.get(env.ZERO_AGENT.idFromName(connectionId));
   const rpcTarget = await stub.setMetaData(connectionId);
-  await rpcTarget.setupAuth(connectionId);
+  
+  // For IMAP connections, we now need to pass both connectionId and sessionUserId
+  // The setupAuth will determine if it needs SQL or Firestore data
+  const sessionUserId = sessionUser?.id ?? '';
+  await rpcTarget.setupAuth(connectionId, sessionUserId);
+  
   return rpcTarget;
 };
 
@@ -27,75 +33,55 @@ export const getActiveConnection = async () => {
 
   const db = getZeroDB(sessionUser.id);
 
+  // Check for default connection first
   const userData = await db.findUser();
-
   if (userData?.defaultConnectionId) {
     const activeConnection = await db.findUserConnection(userData.defaultConnectionId);
-    if (activeConnection) return activeConnection;
-  }
-
-  const firstConnection = await db.findFirstConnection();
-  if (firstConnection) return firstConnection;
-
-  console.log('[DEBUG] No SQL connections found, attempting Firestore fallback');
-
-  // Fallback to Firestore IMAP assignments
-  try {
-    console.log('[DEBUG] Building Firebase credential');
-    const firestore = (() => {
-      if (!getApps().length) {
-        console.log('[DEBUG] Initializing Firebase Admin app');
-        initializeApp({ credential: buildFirebaseCredential() });
-      }
-      return getFs();
-    })();
-
-    console.log('[IMAP] trying firestore fallback for', sessionUser.id);
-
-    const assignmentsSnap = await firestore
-      .collection('email_assignments')
-      .where('personnel_id', '==', sessionUser.id)
-      .where('status', '==', 'active')
-      .limit(1)
-      .get();
-
-    console.log('[IMAP] assignment snapshot size', assignmentsSnap.size);
-    console.log('[IMAP] assignment docs', assignmentsSnap.docs.map(d => d.id));
-
-    if (assignmentsSnap.empty) {
-      throw new Error('No connections found for user');
+    if (activeConnection) {
+      // Convert to unified format for both OAuth and IMAP
+      return transformConnectionForAPI(activeConnection);
     }
-
-    const assignmentData = assignmentsSnap.docs[0].data() as any;
-    const emailAccountId: string = assignmentData.email_account_id;
-
-    // Build stub activeConnection object
-    const accountDoc = await firestore.collection('email_accounts').doc(emailAccountId).get();
-    console.log('[IMAP] email account doc exists?', accountDoc.exists);
-    const account = accountDoc.data() as any;
-    console.log('[IMAP] account data', account);
-
-    if (!accountDoc.exists) throw new Error('No connections found for user');
-
-    return {
-      id: emailAccountId,
-      userId: sessionUser.id,
-      email: account.email_address,
-      name: account.display_name,
-      picture: '',
-      accessToken: null,
-      refreshToken: null,
-      scope: '',
-      providerId: 'imap',
-      expiresAt: new Date(),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    } as unknown as typeof connection.$inferSelect;
-  } catch (err) {
-    console.error(`No connections found for user ${sessionUser.id}`);
-    throw new Error('No connections found for user');
   }
+
+  // Get first available connection
+  const firstConnection = await db.findFirstConnection();
+  if (firstConnection) {
+    return transformConnectionForAPI(firstConnection);
+  }
+
+  // No connections found
+  console.log('[DEBUG] No SQL connections found for user:', sessionUser.id);
+  throw new Error('No connections found for user');
 };
+
+// Helper function to transform SQL connection data to API format
+function transformConnectionForAPI(sqlConnection: typeof connection.$inferSelect) {
+  return {
+    id: sqlConnection.id,
+    userId: sqlConnection.userId,
+    email: sqlConnection.email,
+    name: sqlConnection.name || sqlConnection.email,
+    picture: sqlConnection.picture || '',
+    // For OAuth connections
+    accessToken: sqlConnection.accessToken,
+    refreshToken: sqlConnection.refreshToken,
+    scope: sqlConnection.scope || '',
+    providerId: sqlConnection.providerId,
+    expiresAt: sqlConnection.expiresAt || new Date(),
+    createdAt: sqlConnection.createdAt,
+    updatedAt: sqlConnection.updatedAt,
+    // For IMAP connections - include server config
+    imapConfig: sqlConnection.providerId === 'imap' ? {
+      host: sqlConnection.imapHost!,
+      port: sqlConnection.imapPort!,
+      tls: sqlConnection.imapTls!,
+      encryptedPassword: sqlConnection.encryptedPassword!,
+      smtpHost: sqlConnection.smtpHost,
+      smtpPort: sqlConnection.smtpPort,
+      smtpTls: sqlConnection.smtpTls,
+    } : undefined,
+  };
+}
 
 export const connectionToDriver = (activeConnection: typeof connection.$inferSelect) => {
   if (!activeConnection.accessToken || !activeConnection.refreshToken) {

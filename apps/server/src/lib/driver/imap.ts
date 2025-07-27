@@ -67,6 +67,22 @@ export class ImapMailManager implements MailManager {
     const { user, pass } = decodeUserPass(config.auth?.accessToken);
     this.user = user || config.auth?.email || '';
 
+    console.log('[IMAP] Creating IMAP connection with config:', {
+      host: this.serverConfig.host,
+      port: this.serverConfig.port,
+      tls: this.serverConfig.tls,
+      user: this.user,
+      hasPassword: !!pass,
+      passwordLength: pass?.length || 0
+    });
+
+    // Debug: Let's also decode and check the password format
+    console.log('[IMAP] Decoded credentials:', {
+      user: this.user,
+      passwordFormat: pass?.includes(':') ? 'Contains colon (might be double-encoded)' : 'Normal password',
+      passwordPrefix: pass?.substring(0, 10) + '...'
+    });
+
     const opts: ImapFlowOptions = {
       host: this.serverConfig.host,
       port: this.serverConfig.port,
@@ -75,10 +91,29 @@ export class ImapMailManager implements MailManager {
         user: this.user,
         pass: pass,
       },
+      // Increased timeouts for Cloudflare Workers environment
+      socketTimeout: 60000,       // 60 seconds (increased from 30)
+      authTimeout: 45000,         // 45 seconds (increased from 30)
+      connectionTimeout: 30000,   // 30 seconds for initial connection
+      greetingTimeout: 20000,     // 20 seconds for server greeting
+      logger: {
+        debug: (msg: string) => console.log('[IMAP-DEBUG]', msg),
+        info: (msg: string) => console.log('[IMAP-INFO]', msg),
+        warn: (msg: string) => console.warn('[IMAP-WARN]', msg),
+        error: (msg: string) => console.error('[IMAP-ERROR]', msg),
+      }
     } as ImapFlowOptions;
 
+    console.log('[IMAP] Connecting to IMAP server...');
     this.imap = new ImapFlow(opts as any);
-    this.connectionPromise = this.imap.connect();
+    this.connectionPromise = this.imap.connect()
+      .then(() => {
+        console.log('[IMAP] Successfully connected to IMAP server');
+      })
+      .catch((err) => {
+        console.error('[IMAP] Failed to connect to IMAP server:', err);
+        throw err;
+      });
   }
 
   /* Utility --------------------------------------------------------- */
